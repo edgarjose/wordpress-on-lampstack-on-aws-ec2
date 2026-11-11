@@ -1,80 +1,56 @@
-# comandos-para-wordpress
-Instalação do WordPress numa instância EC2.
+# WordPress numa instância EC2 com LAMP
 
+Laboratório de uma instalação WordPress com Apache, PHP e MySQL/MariaDB na mesma instância. O repositório contém um guia, não uma implementação automatizada.
 
-## Passo 1: Atualizar pacotes do sistema
-sudo yum update -y
+## Antes de começar
 
-## Passo 2: Instalar o Apache (HTTPD)
-sudo yum install httpd -y
+Criar uma instância de laboratório com uma distribuição suportada, Apache, uma versão de PHP compatível com o WordPress atual e MySQL/MariaDB. Instalar os pacotes a partir dos repositórios oficiais da distribuição e confirmar os serviços ativos.
 
-## Passo 3: Iniciar o Apache e configurá-lo para iniciar automaticamente na inicialização
+Os comandos históricos deste repositório usavam Amazon Linux 2 e PHP 7.4. Não reproduzir esses runtimes antigos numa instalação nova. Consultar os [requisitos atuais do WordPress](https://wordpress.org/about/requirements/) e a documentação da distribuição.
 
-sudo systemctl start httpd
+Usar acesso administrativo restrito e não publicar MySQL na internet. Este desenho de uma única instância não é uma arquitetura de alta disponibilidade.
 
-sudo systemctl enable httpd
+## Criar a base de dados
 
-## Passo 4: Instalar PHP 7.4
-sudo amazon-linux-extras install -y php7.4
+Na consola administrativa do MySQL/MariaDB, escolher uma palavra-passe forte e única, diferente de qualquer exemplo publicado:
 
-sudo systemctl restart httpd
+```sql
+CREATE DATABASE wordpressdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'wordpress_app'@'localhost' IDENTIFIED BY 'SUBSTITUIR_POR_UM_SEGREDO_FORTE';
+GRANT ALL PRIVILEGES ON wordpressdb.* TO 'wordpress_app'@'localhost';
+```
 
-## Passo 5: Instalar MariaDB
-sudo yum install -y mariadb-server
+Não executar o placeholder literalmente nem colocar credenciais no Git. Confirmar que o utilizador consegue ligar-se à base de dados local.
 
-## Passo 6: Iniciar o MariaDB e configurá-lo para iniciar automaticamente na inicialização
-sudo systemctl enable mariadb
+## Obter e configurar WordPress
 
-sudo systemctl start mariadb
+Executar os comandos na instância; requer `curl`, `tar` e permissões administrativas:
 
-## Passo 7: Configurar a segurança do MariaDB
-sudo mysql_secure_installation
+```bash
+LAB_DIR="$(mktemp -d)"
+curl -fsSL https://wordpress.org/latest.tar.gz -o "$LAB_DIR/wordpress.tar.gz"
+tar -xzf "$LAB_DIR/wordpress.tar.gz" -C "$LAB_DIR"
+cp "$LAB_DIR/wordpress/wp-config-sample.php" "$LAB_DIR/wordpress/wp-config.php"
+```
 
-## Passo 8: Aceder ao MariaDB
-mysql -u root -p
+Editar esse `wp-config.php` com `DB_NAME=wordpressdb`, `DB_USER=wordpress_app`, a palavra-passe escolhida e `DB_HOST=localhost`. Gerar salts próprios através do [serviço oficial do WordPress](https://api.wordpress.org/secret-key/1.1/salt/).
 
-## Passo 9: Criar a base de dados para o WordPress
-CREATE DATABASE wordpressdb;
+Depois de configurar o ficheiro, copiar o conteúdo a partir do diretório correto:
 
-## Passo 10: Criar um utilizador para a base de dados
-CREATE USER 'dbuser'@'localhost' IDENTIFIED BY 'admin123';
+```bash
+sudo cp -a "$LAB_DIR/wordpress/." /var/www/html/
+```
 
-## Passo 11: Conceder permissões ao utilizador para aceder à base de dados
+Aplicar permissões conforme o utilizador real do Apache na distribuição. Manter `wp-config.php` protegido e conceder escrita apenas aos diretórios que o WordPress necessitar. O utilizador do servidor não deve ter permissões excessivas sobre todos os ficheiros por conveniência.
 
-GRANT ALL PRIVILEGES ON wordpressdb.* TO 'dbuser'@'localhost';
+## Verificar
 
-## Passo 12: Atualizar as permissões
-FLUSH PRIVILEGES;
+Abrir o endereço do servidor e concluir o instalador, usando um utilizador administrador diferente de exemplos comuns. Testar login, um artigo e o upload de media. Consultar os logs PHP/Apache se houver erros.
 
-## Passo 13: Baixar e extrair o WordPress
-cd /tmp
+Configurar HTTPS antes de usar credenciais num site acessível publicamente. Planear atualizações e backups dos ficheiros e da base de dados.
 
-sudo wget https://wordpress.org/latest.tar.gz
+## Custos e limpeza
 
-sudo tar xzvf latest.tar.gz
+EC2, volumes EBS e IPv4 públicos podem gerar custos. Após o ensaio, terminar os recursos dedicados e rever volumes/Elastic IPs. Se o objetivo for manter o site, definir backups e testar o restauro em vez de eliminar recursos.
 
-
-## Passo 14: Configurar o WordPress
-cd wordpress
-
-sudo mv wp-config-sample.php wp-config.php
-
-sudo vi wp-config.php
-
-define('DB_NAME', 'wordpressdb');
-
-define('DB_USER', 'dbuser');
-
-define('DB_PASSWORD', 'admin123');
-
-define('DB_HOST', 'localhost');
-
-## Passo 15: Mover os ficheiros do WordPress para o diretório do Apache
-sudo mv wordpress/* /var/www/html/
-
-## Passo 16: Definir permissões adequadas para o Apache
-sudo chown -R apache:apache /var/www/html/
-
-## Passo 17: Reiniciar o Apache
-sudo systemctl restart httpd
-
+[Guia de migração entre EC2 e RDS](https://github.com/edgarjose/migrar-monolitico-para-microservicos-na-aws)
